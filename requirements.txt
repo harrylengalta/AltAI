@@ -1,0 +1,8 @@
+streamlit
+anthropic
+python-dotenv
+pandas
+numpy
+altair
+plotly
+requests
