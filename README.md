@@ -20,14 +20,7 @@ This Streamlit app provides artist and campaign management, influencer recommend
    ```sh
    pip install -r requirements.txt
    ```
-3. Create a `.env` file in the root directory with your API keys:
-   ```env
-   ANTHROPIC_API_KEY=your_anthropic_key
-   APIFY_TOKEN=your_apify_token
-   TASK_ID=your_task_id
-   CHARTMETRIC_REFRESH_TOKEN=your_chartmetric_token
-   ```
-4. Run the app:
+3. Run the app:
    ```sh
    streamlit run simple_app.py
    ```
