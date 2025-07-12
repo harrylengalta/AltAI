@@ -16,7 +16,7 @@ import altair as alt
 from artist_profiles import render_artist_profiles_tab, get_all_artist_profiles
 # Airtable integration removed
 
-ANTHROPIC_API_KEY = st.secrets("ANTHROPIC_API_KEY")
+ANTHROPIC_API_KEY = st.secrets["ANTHROPIC_API_KEY"]
 if ANTHROPIC_API_KEY:
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 else:
@@ -665,7 +665,7 @@ DATA SAMPLE:
 {json.dumps(sample_rows)[:8000]}  # Truncate to avoid token overflow
 """
                     try:
-                        api_key = st.secrets("ANTHROPIC_API_KEY")
+                        api_key = st.secrets["ANTHROPIC_API_KEY"]
                         if not api_key or client is None:
                             st.session_state['tiktok_trends_summary'] = "Error: Claude API key is missing. Please set ANTHROPIC_API_KEY in your .env file."
                         else:
@@ -821,7 +821,7 @@ Start with a very short bullet or two on the general TikTok influencer marketing
 """
                         with st.spinner("Claude is analyzing and preparing your campaign insights..."):
                             try:
-                                api_key = st.secrets("ANTHROPIC_API_KEY")
+                                api_key = st.secrets["ANTHROPIC_API_KEY"]
                                 if not api_key or client is None:
                                     st.session_state[chat_key].append({"role": "assistant", "content": "Error: Claude API key is missing. Please set ANTHROPIC_API_KEY in your .env file."})
                                 else:
@@ -852,7 +852,7 @@ Start with a very short bullet or two on the general TikTok influencer marketing
                     if ask_button and user_claude_query.strip():
                         with st.spinner("Claude is analyzing your question..."):
                             try:
-                                api_key = st.secrets("ANTHROPIC_API_KEY")
+                                api_key = st.secrets["ANTHROPIC_API_KEY"]
                                 if not api_key or client is None:
                                     st.session_state[chat_key].append({"role": "assistant", "content": "Error: Claude API key is missing. Please set ANTHROPIC_API_KEY in your .env file."})
                                 else:
