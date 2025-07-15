@@ -1,5 +1,5 @@
 import streamlit as st
-import anthropic
+import openai
 import os
 from dotenv import load_dotenv
 import pandas as pd
@@ -9,6 +9,7 @@ import traceback
 from datetime import datetime
 import threading
 import time
+
 import streamlit as st
 import json
 import altair as alt
@@ -16,11 +17,12 @@ import altair as alt
 from artist_profiles import render_artist_profiles_tab, get_all_artist_profiles
 # Airtable integration removed
 
-ANTHROPIC_API_KEY = st.secrets["ANTHROPIC_API_KEY"]
-if ANTHROPIC_API_KEY:
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+# OpenAI GPT API key
+OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+if OPENAI_API_KEY:
+    openai.api_key = OPENAI_API_KEY
 else:
-    client = None
+    openai.api_key = None
 
 def load_data_file(file, data_source="Unknown"):
     """Load data from various file formats"""
@@ -297,7 +299,7 @@ def get_relevant_chat_context(current_query, max_messages=10):
         if role == 'user':
             context_parts.append(f"User ({timestamp[:10]}): {content}")
         elif role == 'assistant':
-            context_parts.append(f"Claude ({timestamp[:10]}): {content}")
+            context_parts.append(f"GPT ({timestamp[:10]}): {content}")
     
     if context_parts:
         return f"\n**RECENT ALTA MUSIC CONVERSATIONS**:\n" + "\n".join(context_parts) + "\n"
@@ -337,7 +339,7 @@ def load_data_description(filename):
     return None
 
 def get_all_data_descriptions():
-    """Get all data descriptions for Claude context"""
+    """Get all data descriptions for GPT context"""
     descriptions = []
     desc_dir = "data/descriptions"
     
@@ -354,7 +356,7 @@ def get_all_data_descriptions():
     return descriptions
 
 def format_data_context_for_claude():
-    """Format all data descriptions for Claude context"""
+    """Format all data descriptions for GPT context"""
     descriptions = get_all_data_descriptions()
     if not descriptions:
         return ""
@@ -520,8 +522,9 @@ def read_case_study_file(filename):
                 return f"Could not read {filename} - unsupported file format or encoding"
     return f"File {filename} not found"
 
-def call_claude(messages, context_type="general"):
-    """Call Claude API with context-aware system message"""
+
+def call_gpt(messages, context_type="general"):
+    """Call OpenAI GPT API with context-aware system message"""
     try:
         # Simple system message for general queries
         system_message = f"""You are a knowledgeable music industry consultant working with Alta Music Group. You have access to comprehensive data about our artists and can provide insights on music industry trends, artist development, and strategic planning.
@@ -539,36 +542,29 @@ def call_claude(messages, context_type="general"):
 
 Please provide helpful and informative responses based on the available data and your music industry expertise."""
 
-        # Convert messages to proper format if needed
+        # Prepare messages for OpenAI API
+        chat_messages = []
+        chat_messages.append({"role": "system", "content": system_message})
         if isinstance(messages, list) and len(messages) > 0:
-            # Handle chat history format
             if isinstance(messages[0], dict) and 'content' in messages[0]:
-                # Extract just the user messages, ignoring system messages
-                user_messages = [msg for msg in messages if msg.get('role') == 'user']
-                if user_messages:
-                    user_message = user_messages[-1]['content']  # Get the last user message
-                else:
-                    user_message = "Please provide analysis of the available data."
+                for msg in messages:
+                    if msg.get('role') in ['user', 'assistant']:
+                        chat_messages.append({"role": msg['role'], "content": msg['content']})
             else:
-                # It's a list of strings
-                user_message = str(messages[-1])
+                chat_messages.append({"role": "user", "content": str(messages[-1])})
         else:
-            # Single message
-            user_message = str(messages) if messages else "Please provide analysis of the available data."
-        
-        response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            chat_messages.append({"role": "user", "content": str(messages) if messages else "Please provide analysis of the available data."})
+
+        response = openai.ChatCompletion.create(
+            model="gpt-4o",
+            messages=chat_messages,
             max_tokens=2000,
-            messages=[
-                {"role": "user", "content": f"{system_message}\n\nUser request: {user_message}"}
-            ]
+            temperature=0.7
         )
-        
-        return response.content[0].text
-        
+        return response.choices[0].message["content"]
     except Exception as e:
-        st.error(f"❌ Error calling Claude API: {str(e)}")
-        return f"Error: Unable to get response from Claude. Please check your API key and try again.\n\nError details: {str(e)}"
+        st.error(f"❌ Error calling OpenAI GPT API: {str(e)}")
+        return f"Error: Unable to get response from GPT. Please check your API key and try again.\n\nError details: {str(e)}"
 
 # --- Utility: Load TikTok dataset for campaign chooser ---
 def load_tiktok_dataset():
@@ -665,16 +661,16 @@ DATA SAMPLE:
 {json.dumps(sample_rows)[:8000]}  # Truncate to avoid token overflow
 """
                     try:
-                        api_key = st.secrets["ANTHROPIC_API_KEY"]
-                        if not api_key or client is None:
-                            st.session_state['tiktok_trends_summary'] = "Error: Claude API key is missing. Please set ANTHROPIC_API_KEY in your .env file."
+                        if not OPENAI_API_KEY:
+                            st.session_state['tiktok_trends_summary'] = "Error: OpenAI API key is missing. Please set OPENAI_API_KEY in your .env file or Streamlit secrets."
                         else:
-                            response = client.messages.create(
-                                model="claude-3-5-sonnet-20241022",
+                            response = openai.ChatCompletion.create(
+                                model="gpt-4o",
+                                messages=[{"role": "system", "content": "You are a music industry data analyst."}, {"role": "user", "content": summary_prompt}],
                                 max_tokens=400,
-                                messages=[{"role": "user", "content": summary_prompt}]
+                                temperature=0.7
                             )
-                            st.session_state['tiktok_trends_summary'] = response.content[0].text.strip()
+                            st.session_state['tiktok_trends_summary'] = response.choices[0].message["content"].strip()
                     except Exception as e:
                         st.session_state['tiktok_trends_summary'] = f"Error generating TikTok trends summary: {str(e)}"
                 else:
@@ -819,27 +815,30 @@ RESPONSE FORMAT: List five different TikTok influencer recommendations (do not i
 
 Start with a very short bullet or two on the general TikTok influencer marketing approach for the artist and be incredibly specific.
 """
-                        with st.spinner("Claude is analyzing and preparing your campaign insights..."):
+                        with st.spinner("GPT is analyzing and preparing your campaign insights..."):
                             try:
-                                api_key = st.secrets["ANTHROPIC_API_KEY"]
-                                if not api_key or client is None:
-                                    st.session_state[chat_key].append({"role": "assistant", "content": "Error: Claude API key is missing. Please set ANTHROPIC_API_KEY in your .env file."})
+                                if not OPENAI_API_KEY:
+                                    st.session_state[chat_key].append({"role": "assistant", "content": "Error: OpenAI API key is missing. Please set OPENAI_API_KEY in your .env file or Streamlit secrets."})
                                 else:
-                                    claude_response = client.messages.create(
-                                        model="claude-3-5-sonnet-20241022",
+                                    gpt_response = openai.ChatCompletion.create(
+                                        model="gpt-4o",
+                                        messages=[
+                                            {"role": "system", "content": system_prompt},
+                                            {"role": "user", "content": context_for_claude}
+                                        ],
                                         max_tokens=600,
-                                        messages=[{"role": "user", "content": system_prompt + "\n" + context_for_claude}]
+                                        temperature=0.7
                                     )
                                     st.session_state[chat_key].append({"role": "user", "content": initial_user_message})
-                                    st.session_state[chat_key].append({"role": "assistant", "content": claude_response.content[0].text.strip()})
+                                    st.session_state[chat_key].append({"role": "assistant", "content": gpt_response.choices[0].message["content"].strip()})
                             except Exception as e:
-                                st.session_state[chat_key].append({"role": "assistant", "content": f"Error getting Claude response: {str(e)}"})
+                                st.session_state[chat_key].append({"role": "assistant", "content": f"Error getting GPT response: {str(e)}"})
                 # Step 2: Display chat history (insights + follow-ups)
                 for msg in st.session_state[chat_key]:
                     if msg['role'] == 'user':
                         st.markdown(f"**You:** {msg['content']}")
                     else:
-                        st.markdown(f"**Claude:** {msg['content']}")
+                        st.markdown(f"**GPT:** {msg['content']}")
                 # Step 3: Input box and Ask Claude button only after initial insights (i.e., after generate is hit)
                 if st.session_state[chat_key]:
                     user_claude_query = st.text_area(
@@ -848,29 +847,30 @@ Start with a very short bullet or two on the general TikTok influencer marketing
                         height=100,
                         key=f"claude_refine_query_{selected_campaign_artist}"
                     )
-                    ask_button = st.button("Ask Claude (sometimes have to click again / wait)", key=f"claude_refine_button_{selected_campaign_artist}", use_container_width=True)
+                    ask_button = st.button("Ask GPT (sometimes have to click again / wait)", key=f"claude_refine_button_{selected_campaign_artist}", use_container_width=True)
                     if ask_button and user_claude_query.strip():
-                        with st.spinner("Claude is analyzing your question..."):
+                        with st.spinner("GPT is analyzing your question..."):
                             try:
-                                api_key = st.secrets["ANTHROPIC_API_KEY"]
-                                if not api_key or client is None:
-                                    st.session_state[chat_key].append({"role": "assistant", "content": "Error: Claude API key is missing. Please set ANTHROPIC_API_KEY in your .env file."})
+                                if not OPENAI_API_KEY:
+                                    st.session_state[chat_key].append({"role": "assistant", "content": "Error: OpenAI API key is missing. Please set OPENAI_API_KEY in your .env file or Streamlit secrets."})
                                 else:
-                                    messages = [
-                                        {"role": "user", "content": system_prompt}
+                                    gpt_messages = [
+                                        {"role": "system", "content": system_prompt}
                                     ]
                                     for m in st.session_state[chat_key]:
-                                        messages.append({"role": m['role'], "content": m['content']})
-                                    messages.append({"role": "user", "content": user_claude_query})
-                                    claude_response = client.messages.create(
-                                        model="claude-3-5-sonnet-20241022",
+                                        if m['role'] in ['user', 'assistant']:
+                                            gpt_messages.append({"role": m['role'], "content": m['content']})
+                                    gpt_messages.append({"role": "user", "content": user_claude_query})
+                                    gpt_response = openai.ChatCompletion.create(
+                                        model="gpt-4o",
+                                        messages=gpt_messages,
                                         max_tokens=600,
-                                        messages=messages
+                                        temperature=0.7
                                     )
                                     st.session_state[chat_key].append({"role": "user", "content": user_claude_query})
-                                    st.session_state[chat_key].append({"role": "assistant", "content": claude_response.content[0].text.strip()})
+                                    st.session_state[chat_key].append({"role": "assistant", "content": gpt_response.choices[0].message["content"].strip()})
                             except Exception as e:
-                                st.session_state[chat_key].append({"role": "assistant", "content": f"Error getting Claude response: {str(e)}"})
+                                st.session_state[chat_key].append({"role": "assistant", "content": f"Error getting GPT response: {str(e)}"})
 # TAB 2: ARTIST PROFILES
 with tab2:
     render_artist_profiles_tab()
@@ -894,7 +894,7 @@ with tab3:
         placeholder="Describe in detail what this data contains",
         key="upload_description",
         height=100,
-        help="This description helps Claude understand and use your data effectively"
+        help="This description helps GPT understand and use your data effectively"
     )
     
     # File uploader section
