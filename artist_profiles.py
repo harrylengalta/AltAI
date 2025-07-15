@@ -1,5 +1,5 @@
 import streamlit as st
-import anthropic
+import openai
 import os
 import json
 import traceback
@@ -11,12 +11,12 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# Initialize Claude client only if API key is present
-ANTHROPIC_API_KEY = st.secrets["ANTHROPIC_API_KEY"]
-if ANTHROPIC_API_KEY:
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+# Initialize OpenAI client only if API key is present
+OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"] if "OPENAI_API_KEY" in st.secrets else os.getenv("OPENAI_API_KEY")
+if OPENAI_API_KEY:
+    openai.api_key = OPENAI_API_KEY
 else:
-    client = None
+    openai.api_key = None
 
 def simulate_tiktok_scrape(handle):
     """Simulate TikTok scraping (in real implementation, this would use actual APIs/scrapers)"""
@@ -73,9 +73,9 @@ def simulate_instagram_scrape(handle):
         return None
 
 def generate_unified_profile(artist_name, artist_description, collected_data):
-    """Use Claude to generate a detailed, factual profile and short platform summaries (no Spotify)"""
+    """Use GPT to generate a detailed, factual profile and short platform summaries (no Spotify)"""
     try:
-        # Prepare data summary for Claude
+        # Prepare data summary for GPT
         data_summary = f"Artist: {artist_name}\n\n"
         if 'tiktok' in collected_data:
             tiktok = collected_data['tiktok']
@@ -106,16 +106,19 @@ def generate_unified_profile(artist_name, artist_description, collected_data):
         The 'description' field in the JSON should be a long, richly detailed and atmospheric summary as described above.
         For the genre field, output a single, human-readable string (e.g. "Rock, Blues Rock, Hard Rock") rather than a list or array.
         '''
-        if client is None:
-            st.error("Error: Claude API key is missing. Please set ANTHROPIC_API_KEY in your .env file.")
+        if not OPENAI_API_KEY:
+            st.error("Error: OpenAI API key is missing. Please set OPENAI_API_KEY in your .env file or Streamlit secrets.")
             return None
-        response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+        response = openai.ChatCompletion.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a music industry expert who creates detailed artist profiles. Always respond with valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
             max_tokens=900,
-            temperature=0.5,
-            messages=[{"role": "user", "content": prompt}]
+            temperature=0.5
         )
-        text = response.content[0].text.strip()
+        text = response.choices[0].message["content"].strip()
         # Try to extract JSON from the response robustly
         import json, re
         try:
@@ -131,7 +134,7 @@ def generate_unified_profile(artist_name, artist_description, collected_data):
                     st.error(f"Error parsing profile JSON: {str(e2)}\nRaw output: {text[:1000]}...")
                     return None
             else:
-                st.error(f"Error: No valid JSON found in Claude output. Raw output: {text[:1000]}...")
+                st.error(f"Error: No valid JSON found in GPT output. Raw output: {text[:1000]}...")
                 return None
         return profile
     except Exception as e:
@@ -265,8 +268,8 @@ def render_artist_profiles_tab():
                     if os.path.exists(file_path):
                         with open(file_path, "r") as f:
                             loaded_data[platform] = json.load(f)
-                # Generate comprehensive profile with Claude using both scraped data and description
-                with st.spinner("Claude is analyzing data and generating profile..."):
+                # Generate comprehensive profile with GPT using both scraped data and description
+                with st.spinner("GPT is analyzing data and generating profile..."):
                     profile = generate_unified_profile(artist_name, artist_description, loaded_data)
                     if profile:
                         with open(f"{working_dir}/profile_summary.json", "w") as f:
@@ -355,7 +358,7 @@ def render_artist_profiles_tab():
     if profiles:
         # Display profiles with edit capability
         for i, profile in enumerate(profiles):
-            # Defensive: load Claude-generated platform data for each profile
+            # Defensive: load GPT-generated platform data for each profile
             artist_dir = f"data/artists_for_analytics/{profile['name'].replace(' ', '_').lower()}"
             tiktok_profile_path = os.path.join(artist_dir, "tiktok_profile.json")
             instagram_profile_path = os.path.join(artist_dir, "instagram_profile.json")
